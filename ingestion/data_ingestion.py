@@ -1,13 +1,14 @@
 import os
-import streamlit as st
 from pinecone import Pinecone
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
-from llama_index.core.storage.docstore import SimpleDocumentStore
+from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.readers.file import PyMuPDFReader
+from dotenv import load_dotenv
 
+load_dotenv()
 DOCSTORE_PATH = "./data/local_docstore.json"
 
 def load_documents(target_path):
@@ -19,6 +20,7 @@ def load_documents(target_path):
     parser = PyMuPDFReader()
     file_extractor = {".pdf": parser}
 
+    print(f"Cargando documentos desde {target_path}...")
     # Usa el extractor al SimpleDirectoryReader
     docs = SimpleDirectoryReader(target_path, file_extractor=file_extractor).load_data()
 
@@ -30,52 +32,53 @@ def load_documents(target_path):
 
 def setup_components():
     # Inicializa el modelo de HuggingFaceEmbeddings, el hierarchical parser, el vector store y docstore
-    pinecone = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
-    pinecone_index = pinecone.Index(host=st.secrets["PINECONE_HOST"])
+    pinecone = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
+    pinecone_index = pinecone.Index(host=os.environ.get("PINECONE_HOST"))
+
     vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
+    docstore = MongoDocumentStore.from_uri(
+        uri=os.environ.get("MONGO_DB_URI"),
+        db_name=os.environ.get("MONGO_DB_NAME"),
+        namespace=os.environ.get("MONGO_DB_NAMESPACE")
+    )
     embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    # Reducimos a dos niveles para reducir el tamaño de local_docstore.json
     node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=[2048, 512])
-    
-    if os.path.exists(DOCSTORE_PATH):
-        print("Cargando docstore existente...")
-        docstore = SimpleDocumentStore.from_persist_path(DOCSTORE_PATH)
-    else:
-        print("Creando nuevo docstore...")
-        docstore = SimpleDocumentStore()
 
     return vector_store, embed_model, node_parser, docstore
 
 def ingest_folder(target_path):
     # Carga y categoriza los documentos desde la carpeta especificada por el usuario
     docs = load_documents(target_path)
+    if not docs : return
 
     # Configura los componentes necesarios para el procesamiento de documentos
     vector_store, embed_model, node_parser, docstore = setup_components()
     
     # Procesa los documentos para obtener los nodos y luego los nodos hoja
+    print("Fragmentando documentos (Chunking)...")
     nodes = node_parser.get_nodes_from_documents(docs)
     leaf_nodes = get_leaf_nodes(nodes)
 
-    # Crea el Storage Context con el vector store y docstore, y agregamos los nodos al docstore local
+    # Crea el Storage Context con el vector store y docstore
     storage_context = StorageContext.from_defaults(
         vector_store=vector_store,
         docstore=docstore
     )
+
+    print(f"Subiendo datos a MongoDB Atlas...")
     storage_context.docstore.add_documents(nodes)
 
     # Indexa los nodos hoja en Pinecone
     print(f"Indexando {len(leaf_nodes)} nodos hoja en Pinecone...")
-    VectorStoreIndex(
-        leaf_nodes,
-        storage_context=storage_context,
+    index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store, 
         embed_model=embed_model,
-        insert_batch_size=100
+        storage_context=storage_context
     )
+    # Insertamos los nuevos nodos 
+    index.insert_nodes(leaf_nodes)
 
-    # Guarda el docstore localmente para futuras cargas
-    storage_context.docstore.persist(persist_path=DOCSTORE_PATH)
-    print("Indexación completada y docstore guardado localmente.")
+    print("Ingesta completada!")
 
 if __name__ == "__main__":
     # El usuario introduce la ruta a su directorio de documentos.
