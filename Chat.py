@@ -5,6 +5,8 @@ from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from utils.read_local_data import read_local_data
 from utils.rag_system import build_query_engine
 
+MAX_REQUESTS = 5
+
 @st.cache_resource
 def load_rag_system():
     # Configura la conexión a Pinecone y carga el modelo de lenguaje y el modelo de embeddings
@@ -17,7 +19,7 @@ def load_rag_system():
         system_prompt=system_prompt
     )
     docstore = MongoDocumentStore.from_uri(
-        uri=st.secrets["MONGO_DB_URI"],
+        uri=st.secrets["MONGO_DB_URI_READ"],
         db_name=st.secrets["MONGO_DB_NAME"],
         namespace=st.secrets["MONGO_DB_NAMESPACE"]
     )
@@ -29,20 +31,30 @@ st.title("AWS Technical Assistant for EC2")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "question_count" not in st.session_state:
+    st.session_state.question_count = 0
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Ask me anything about EC2..."):
+if st.session_state.question_count >= MAX_REQUESTS:
+    st.warning("⚠️ **Demostration limit reached.**")
+    st.chat_input("Limit reached. Please try again later.", disabled=True)
+elif prompt := st.chat_input("Ask me anything about EC2...", max_chars=120):
+    st.session_state.question_count += 1
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
     try:
         query_engine = load_rag_system()
-        response = query_engine.query(prompt)
+        with st.spinner("Analyzing technical documentation..."):
+            response = query_engine.query(prompt)
     except Exception as e:
-        response = f"An error occurred while processing your query: {str(e)}"
+        if "429" in str(e):
+            response = "⚠️ **Rate limit exceeded. Please try again later.**"
+        else:
+            response = f"An error occurred while processing your query: {str(e)}"
     with st.chat_message("assistant"):
         st.markdown(response)
     st.session_state.messages.append({"role": "assistant", "content": response})

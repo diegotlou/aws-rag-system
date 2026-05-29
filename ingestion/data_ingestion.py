@@ -9,7 +9,6 @@ from llama_index.readers.file import PyMuPDFReader
 from dotenv import load_dotenv
 
 load_dotenv()
-DOCSTORE_PATH = "./data/local_docstore.json"
 
 def load_documents(target_path):
     if not os.path.exists(target_path):
@@ -24,9 +23,20 @@ def load_documents(target_path):
     # Usa el extractor al SimpleDirectoryReader
     docs = SimpleDirectoryReader(target_path, file_extractor=file_extractor).load_data()
 
-    category = os.path.basename(target_path.split("/")[-1])  # Extrae el nombre de la carpeta como categoría
+    category = os.path.basename(target_path.strip("/"))  # Extrae el nombre de la carpeta como categoría
+    
+    sensitive_metadata = [
+        "file_path", 
+        "creation_date", 
+        "last_modified_date", 
+        "last_accessed_date"
+    ]
+    
     for doc in docs:
         doc.metadata["category"] = category
+
+        for metadata in sensitive_metadata:
+            doc.metadata.pop(metadata, None)
 
     return docs
 
