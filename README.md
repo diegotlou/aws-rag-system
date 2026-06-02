@@ -2,12 +2,12 @@
 
 **Asistente técnico especializado en Amazon EC2**
 
-Este proyecto demuestra la creación de un sistema de recuperación aumentada por memoria (RAG) para consultas sobre documentación técnica de AWS EC2. Está diseñado para ofrecer respuestas precisas y basadas en contexto, con una integración práctica de almacenamiento vectorial, embeddings y un modelo de lenguaje enfocado en AWS.
+Este proyecto demuestra la creación de un sistema de recuperación aumentada por memoria (RAG) para consultas sobre documentación técnica de AWS EC2. La idea es agregar más documentación en un futuro. Está diseñado para ofrecer respuestas precisas y basadas en contexto, con una integración práctica de almacenamiento vectorial, embeddings y un modelo de lenguaje enfocado en AWS.
 
 ## Qué incluye
 
 - **Aplicación Streamlit** para interactuar con el asistente de EC2.
-- **Ingestión de documentos** en formato PDF y almacenamiento de contexto local.
+- **Ingestión de documentos** en formato PDF y almacenamiento de contexto con MongoDB.
 - **Indexación en Pinecone** para recuperación de información relevante.
 - **Uso de embeddings HuggingFace** con `BAAI/bge-small-en-v1.5`.
 - **Modelo LLM Groq** especializado en respuestas técnicas de AWS (actualmente solo temas de EC2).
@@ -15,9 +15,9 @@ Este proyecto demuestra la creación de un sistema de recuperación aumentada po
 
 ## Tecnologías clave
 
-- Python
 - Streamlit
 - Pinecone
+- MongoDB
 - LlamaIndex
 - Groq
 - HuggingFace Embeddings
@@ -25,17 +25,18 @@ Este proyecto demuestra la creación de un sistema de recuperación aumentada po
 
 ## Estructura del proyecto
 
-- `main.py` - aplicación web con streamlit para consultas.
-- `data_ingestion.py` -  pide una ruta de una carpeta, toma los archivos dentro de la carpeta, genera los nodos de los documentos con `HierarchicalNodeParser` y  usa el modelo de embedding de HigginFace `BAAI/bge-small-en-v1.5` para indexar los nodos hoja en **Pinecone**.
-- `evaluator.py` -  hace una evaluación con **LLM as a Judge**, el sistema RAG contesta 15 preguntas y el juez califica fidelidad y relevancia.
-- `data/local_docstore.json` - almacén local de documentos indexados.
+- `Chat.py` - aplicación web con streamlit para consultas.
+- `data_ingestion.py` -  pide una ruta de una carpeta, toma los archivos dentro de la carpeta, genera los nodos de los documentos con `HierarchicalNodeParser` y  usa el modelo de embedding de HigginFace `BAAI/bge-small-en-v1.5` para indexar los embeddings de los nodos hoja en **Pinecone**, el resto de nodos se almacenan en **MongoDB**.
+- `evaluator.py` -  hace una evaluación con **LLM as a Judge**, el sistema RAG contesta preguntas orientadas a evaluar: relevancia, fidelidad y robustez.
 
 ## Cómo usarlo
 
-1. Configurar las claves en `st.secrets` y variables `.env`.
-2. Ejecutar `data_ingestion.py` para cargar la documentación.
-3. Iniciar la aplicación con `python -m streamlit run .\main.py`.
-4. Consultar la documentación de EC2 desde la interfaz.
+1. Agregar las bibliotecas necesarias `uv add streamlit pinecone groq llama-index-core llama-index-llms-groq llama-index-embeddings-huggingface llama-index-vector-stores-pinecone llama-index-readers-file pymupdf`
+    * El archivo `requirements.txt` solo tiene las bibliotecas necesarias para la ejecución de **Chat.py**
+2. Configurar las claves en `st.secrets` y variables `.env`.
+3. Ejecutar `data_ingestion.py` para cargar la documentación.
+4. Iniciar la aplicación con `streamlit run Chay.py` ó `python -m streamlit run Chay.py`.
+5. Consultar la documentación de EC2 desde la interfaz.
 
 ## Resultados esperados
 
