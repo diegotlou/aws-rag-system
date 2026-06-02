@@ -1,45 +1,61 @@
-import os
-from dotenv import load_dotenv
+import time
 import json
-from pinecone import Pinecone
 from groq import Groq
-from utils.rag_system import build_query_engine
+from utils.config import get_credentials
+from utils.rag_system import build_connections, build_query_engine
 from utils.read_local_data import read_local_data
 
-load_dotenv()
-JUDGE_API_KEY = os.environ.get("JUDGE_API_KEY")
-TEST_CASES = [json.loads(line) for line in read_local_data("judge_test_v1.jsonl")]
-JUDGE_PROMPT = read_local_data("judge_v1.md")
+API_DELAY = 20
 
-judge_client = Groq(api_key=JUDGE_API_KEY)
+def setup_components():
+    credentials = get_credentials("env")
+    JUDGE_API_KEY = credentials.get("JUDGE_API_KEY")
+    pinecone_index, llm, docstore = build_connections(credentials)
+    query_engine = build_query_engine(pinecone_index, llm, docstore)
+    judge_client = Groq(api_key=JUDGE_API_KEY)
+    return query_engine, judge_client, credentials.get("RAG_MODEL"), credentials.get("JUDGE_MODEL") 
+
+def load_evaluation_components(test_type):
+    if test_type == 1 or test_type == 2:
+        test_file = "judge_test_v1.jsonl"
+        if test_type == 1:
+            judge_file = "judge_faithfulness_prompt_v1.md"
+            metric = "Faithfulness"
+        else:
+            judge_file = "judge_relevance_prompt_v1.md"
+            metric = "Relevance"
+    elif test_type == 3:
+        test_file = "judge_test_robustness_v1.jsonl"
+        judge_file = "judge_robustness_prompt_v1.md"
+        metric = "Robustness"
+    else:
+        return
+    test_cases = [json.loads(line) for line in read_local_data(test_file)]
+    judge_prompt = read_local_data(judge_file)
+    return test_cases, judge_prompt, metric, judge_file, test_file
 
 def write_markdown_file(markdown_text, filename="evaluation_results.md"):
-    with open(filename, "w") as f:
+    with open(filename, "w", encoding='utf-8', errors='ignore') as f:
         f.write(markdown_text)
 
-def evaluate_rag():
-    markdown_text = "# Evaluación del sistema RAG para AWS EC2\n\n"
-    print("Iniciando evaluación del sistema RAG...")
-    pinecone = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
-    pinecone_index = pinecone.Index(host=os.environ.get("PINECONE_HOST"))
-    system_prompt = read_local_data("system_prompt_v1.md")
-    llm = Groq(
-        model="llama-3.3-70b-versatile", 
-        api_key=os.environ.get("GROQ_API_KEY"),
-        system_prompt=system_prompt
-    )
-    query_engine = build_query_engine(pinecone_index, llm)
+def evaluate_rag(test_cases, judge_prompt, metric, judge_file, test_file):
+    query_engine, judge_client, rag_model_name, judge_model_name = setup_components()
+    markdown_text = f"# Evaluación del sistema RAG para la prueba {metric}\n\n"
+    markdown_text += f"* **Prompt:** {judge_file}\n* **RAG model:** {rag_model_name}\n* **JUDGE model:** {judge_model_name}\n* **Test:** {test_file}\n"
+    print("Iniciando evaluacion del sistema RAG...")
 
     results = []
-    for i, test in enumerate(TEST_CASES):
-        print(f"Evaluando caso de prueba {i+1}/{len(TEST_CASES)}: {test['query']}")
+    for i, test in enumerate(test_cases):
+        print(f"Evaluando caso de prueba {i+1}/{len(test_cases)}: {test['query']}")
         response_obj = query_engine.query(test["query"])
-        
+
         answer = str(response_obj)
         context_str = "\n\n".join([node.text for node in response_obj.source_nodes])
         
         evaluation_data = f"""
         USER QUERY: {test['query']}
+
+        EXPECTED CORRECT CONCEPTS {test['expected_concept']}
         
         RETRIEVED CONTEXT:
         {context_str}
@@ -50,38 +66,42 @@ def evaluate_rag():
 
         chat_completion = judge_client.chat.completions.create(
             messages=[
-                { "role": "system", "content": JUDGE_PROMPT},
+                { "role": "system", "content": judge_prompt},
                 { "role": "user", "content": evaluation_data}
             ],
-            model="llama-3.3-70b-versatile",
+            model=judge_model_name,
             response_format={"type": "json_object"},
             temperature=0.0
         )
 
         json_response = json.loads(chat_completion.choices[0].message.content)
-        results.append(json_response)
+        results.append(json_response["score"])
 
         markdown_text += f"## Caso de prueba {i+1}\n\n"
         markdown_text += f"**Pregunta de evaluación:**\n{test['query']}\n\n"
         markdown_text += f"**Respuesta del sistema RAG:**\n{answer}\n\n"
         markdown_text += f"**Evaluación del juez:**\n"
-        markdown_text += f"- Fidelidad: {json_response['faithfulness_score']}/5\n"
-        markdown_text += f"  - Razonamiento: {json_response['faithfulness_reasoning']}\n"
-        markdown_text += f"- Relevancia: {json_response['relevance_score']}/5\n"
-        markdown_text += f"  - Razonamiento: {json_response['relevance_reasoning']}\n\n"
-    
-    average_faithfulness = sum(r['faithfulness_score'] for r in results) / len(results)
-    average_relevance = sum(r['relevance_score'] for r in results) / len(results)
+        json_keys = list(json_response.keys())
+        for key in json_keys:
+            print(f"- {key}: {json_response[key]}")
+            markdown_text += f"- **{key}**: {json_response[key]}\n"
+        markdown_text += "\n"
 
-    markdown_text += f"## Resultados finales\n\n"
-    markdown_text += f"- Promedio de fidelidad: {average_faithfulness}/5\n"
-    markdown_text += f"- Promedio de relevancia: {average_relevance}/5\n\n"
+        time.sleep(API_DELAY)
+    
+    average_result = sum(r for r in results) / len(results)
+
+    markdown_text += f"## Resultado final: {average_result}/5"
     print("\n" + "="*30)
-    print(f"Resultados finales:")
-    print(f"Promedio de fidelidad: {average_faithfulness}/5")
-    print(f"Promedio de relevancia: {average_relevance}/5")
+    print(f"Resultado para {metric}: {average_result}/5")
     print("Para mas detalles, revise el documento de resultados completo.")
-    write_markdown_file(markdown_text)
+    write_markdown_file(markdown_text, filename=f"evaluation_results_{metric}.md")
 
 if __name__ == "__main__":
-    evaluate_rag()
+    test_menu = "Ingrese el numero del test que desee ejecutar\n  1. Faithfulness\n  2. Relevance\n  3. Robustness\n"
+    while True:
+        test_type = int(input(test_menu))
+        if test_type >= 1 and test_type <= 3 : break
+        print(f"Ingrese una opcion valida\n{test_menu}")
+    test_cases, judge_prompt, metric, judge_file, test_file = load_evaluation_components(test_type)
+    evaluate_rag(test_cases, judge_prompt, metric, judge_file, test_file)
