@@ -5,5 +5,3 @@ llama-index-core
 llama-index-llms-groq
 llama-index-embeddings-huggingface
 llama-index-vector-stores-pinecone
-llama-index-readers-file
-pymupdf
