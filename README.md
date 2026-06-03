@@ -10,7 +10,7 @@ Este proyecto demuestra la creación de un sistema de recuperación aumentada po
 - **Ingestión de documentos** en formato PDF y almacenamiento de contexto con MongoDB.
 - **Indexación en Pinecone** para recuperación de información relevante.
 - **Uso de embeddings HuggingFace** con `BAAI/bge-small-en-v1.5`.
-- **Modelo LLM Groq** especializado en respuestas técnicas de AWS (actualmente solo temas de EC2).
+- **LLM** especializado en respuestas técnicas de AWS (actualmente solo temas de EC2).
 - **Mecanismo de evaluación** automatizado con criterios de fidelidad y relevancia.
 
 ## Tecnologías clave
@@ -19,7 +19,7 @@ Este proyecto demuestra la creación de un sistema de recuperación aumentada po
 - Pinecone
 - MongoDB
 - LlamaIndex
-- Groq
+- GoogleGenAI
 - HuggingFace Embeddings
 - PyMuPDF
 
@@ -31,7 +31,7 @@ Este proyecto demuestra la creación de un sistema de recuperación aumentada po
 
 ## Cómo usarlo
 
-1. Agregar las bibliotecas necesarias `uv add streamlit pinecone groq llama-index-core llama-index-llms-groq llama-index-embeddings-huggingface llama-index-vector-stores-pinecone llama-index-readers-file pymupdf`
+1. Agregar las bibliotecas necesarias `uv add streamlit pinecone llama-index-core llama-index-llms-google-genai llama-index-embeddings-huggingface llama-index-vector-stores-pinecone llama-index-readers-file pymupdf`
     * El archivo `requirements.txt` solo tiene las bibliotecas necesarias para la ejecución de **Chat.py**
 2. Configurar las claves en `st.secrets` y variables `.env`.
 3. Ejecutar `data_ingestion.py` para cargar la documentación.
