@@ -1,18 +1,23 @@
 import time
 import json
-from groq import Groq
+from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.core.llms import ChatMessage
 from utils.config import get_credentials
 from utils.rag_system import build_connections, build_query_engine
 from utils.read_local_data import read_local_data
 
-API_DELAY = 20
+API_DELAY = 5
 
 def setup_components():
     credentials = get_credentials("env")
-    JUDGE_API_KEY = credentials.get("JUDGE_API_KEY")
     pinecone_index, llm, docstore = build_connections(credentials)
     query_engine = build_query_engine(pinecone_index, llm, docstore)
-    judge_client = Groq(api_key=JUDGE_API_KEY)
+    judge_client = GoogleGenAI(
+        model=credentials.get("RAG_MODEL"),
+        api_key=credentials.get("RAG_API_KEY"),
+        temperature=0.0,
+    )
+
     return query_engine, judge_client, credentials.get("RAG_MODEL"), credentials.get("JUDGE_MODEL") 
 
 def load_evaluation_components(test_type):
@@ -48,7 +53,7 @@ def evaluate_rag(test_cases, judge_prompt, metric, judge_file, test_file):
     for i, test in enumerate(test_cases):
         print(f"Evaluando caso de prueba {i+1}/{len(test_cases)}: {test['query']}")
         response_obj = query_engine.query(test["query"])
-
+        time.sleep(API_DELAY)
         answer = str(response_obj)
         context_str = "\n\n".join([node.text for node in response_obj.source_nodes])
         
@@ -63,18 +68,14 @@ def evaluate_rag(test_cases, judge_prompt, metric, judge_file, test_file):
         SYSTEM ANSWER:
         {answer}
         """
-
-        chat_completion = judge_client.chat.completions.create(
-            messages=[
-                { "role": "system", "content": judge_prompt},
-                { "role": "user", "content": evaluation_data}
-            ],
-            model=judge_model_name,
-            response_format={"type": "json_object"},
-            temperature=0.0
+        response = judge_client.chat(
+            [
+                ChatMessage(role="system", content=judge_prompt),
+                ChatMessage(role="user", content=evaluation_data),
+            ]
         )
-
-        json_response = json.loads(chat_completion.choices[0].message.content)
+        time.sleep(API_DELAY)
+        json_response = json.loads(response.message.content)
         results.append(json_response["score"])
 
         markdown_text += f"## Caso de prueba {i+1}\n\n"
