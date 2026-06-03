@@ -1,19 +1,37 @@
 import streamlit as st
 from utils.config import get_credentials
-from utils.rag_system import get_emebedding_model, build_connections, build_query_engine
+from utils.read_local_data import read_local_data
+from utils.rag_system import get_emebedding_model, get_llm, build_connections, build_query_engine
 
 MAX_REQUESTS = 5
 
 @st.cache_resource
-def _load_embedding_model():
+def get_cached_embedding_model():
     return get_emebedding_model()
+
+@st.cache_resource
+def get_cached_connections():
+    credentials = get_credentials(source="streamlit")
+    return build_connections(credentials)
+
+@st.cache_resource
+def get_cached_prompt():
+    return read_local_data("system_prompt_v3.md")
+
+@st.cache_resource
+def get_cached_llm(prompt):
+    credentials = get_credentials(source="streamlit")
+    return get_llm(credentials, prompt)
 
 @st.cache_resource
 def load_rag_system():
     credentials = get_credentials(source="streamlit")
-    pinecone_index, llm, docstore = build_connections(credentials)
-    embedding_model = _load_embedding_model()
-    return build_query_engine(pinecone_index, llm, docstore, embedding_model)
+    prompt = get_cached_prompt()
+    llm = get_cached_llm(prompt)
+    embedding_model = get_cached_embedding_model()
+    pinecone_index, docstore = get_cached_connections()
+    query_engine, _ = build_query_engine(credentials, embedding_model, llm, pinecone_index, docstore)
+    return query_engine
 
 st.set_page_config(page_title="EC2 Expert", page_icon="☁️")
 st.title("AWS Technical Assistant for EC2")

@@ -3,18 +3,17 @@ import json
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.llms import ChatMessage
 from utils.config import get_credentials
-from utils.rag_system import build_connections, build_query_engine
+from utils.rag_system import build_query_engine
 from utils.read_local_data import read_local_data
 
 API_DELAY = 5
 
 def setup_components():
     credentials = get_credentials("env")
-    pinecone_index, llm, docstore = build_connections(credentials)
-    query_engine = build_query_engine(pinecone_index, llm, docstore)
+    query_engine, _ = build_query_engine(credentials)
     judge_client = GoogleGenAI(
         model=credentials.get("RAG_MODEL"),
-        api_key=credentials.get("RAG_API_KEY"),
+        api_key=credentials.get("JUDGE_API_KEY"),
         temperature=0.0,
     )
 
@@ -30,7 +29,7 @@ def load_evaluation_components(test_type):
             judge_file = "judge_relevance_prompt_v1.md"
             metric = "Relevance"
     elif test_type == 3:
-        test_file = "judge_test_robustness_v1.jsonl"
+        test_file = "judge_test_robustness_v2.jsonl"
         judge_file = "judge_robustness_prompt_v1.md"
         metric = "Robustness"
     else:
