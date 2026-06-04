@@ -7,12 +7,11 @@ MAX_REQUESTS = 5
 
 @st.cache_resource
 def get_cached_embedding_model():
-    return get_emebedding_model()
+    return get_emebedding_model(st.session_state.credentials.get("HF_TOKEN"))
 
 @st.cache_resource
 def get_cached_connections():
-    credentials = get_credentials(source="streamlit")
-    return build_connections(credentials)
+    return build_connections(st.session_state.credentials)
 
 @st.cache_resource
 def get_cached_prompt():
@@ -20,17 +19,15 @@ def get_cached_prompt():
 
 @st.cache_resource
 def get_cached_llm(prompt):
-    credentials = get_credentials(source="streamlit")
-    return get_llm(credentials, prompt)
+    return get_llm(st.session_state.credentials, prompt)
 
 @st.cache_resource
 def load_rag_system():
-    credentials = get_credentials(source="streamlit")
     prompt = get_cached_prompt()
     llm = get_cached_llm(prompt)
     embedding_model = get_cached_embedding_model()
     pinecone_index, docstore = get_cached_connections()
-    query_engine, _ = build_query_engine(credentials, embedding_model, llm, pinecone_index, docstore)
+    query_engine, _ = build_query_engine(st.session_state.credentials, embedding_model, llm, pinecone_index, docstore)
     return query_engine
 
 st.set_page_config(page_title="EC2 Expert", page_icon="☁️")
@@ -40,6 +37,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "question_count" not in st.session_state:
     st.session_state.question_count = 0
+if "credentials" not in st.session_state:
+    st.session_state.credentials = get_credentials("streamlit")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):

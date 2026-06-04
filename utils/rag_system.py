@@ -8,8 +8,8 @@ from utils.read_local_data import read_local_data
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-def get_emebedding_model():
-    return HuggingFaceEmbedding(model_name=EMBEDDING_MODEL_NAME)
+def get_emebedding_model(token):
+    return HuggingFaceEmbedding(model_name=EMBEDDING_MODEL_NAME, token=token)
 
 def get_llm(credentials, system_prompt=None):
     from llama_index.llms.google_genai import GoogleGenAI
