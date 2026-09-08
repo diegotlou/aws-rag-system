@@ -5,6 +5,8 @@ from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine, TransformQueryEngine
 from llama_index.core.indices.query.query_transform import HyDEQueryTransform
 from utils.read_local_data import read_local_data
+from llama_index.core.tools import QueryEngineTool, ToolMetadata, FunctionTool
+from llama_index.core.agent.workflow import ReActAgent
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
@@ -64,3 +66,76 @@ def build_query_engine(credentials, embedding_model=None, llm=None, pinecone_ind
     query_engine = TransformQueryEngine(base_query_engine, query_transform=hyde)
     
     return query_engine, base_query_engine
+
+def build_agent(credentials, query_engine=None, llm=None):
+    if llm is None : llm = get_llm(credentials)
+    if query_engine is None : query_engine = build_query_engine(credentials, llm=llm)[0]
+
+    # Tool 1: Motor RAG (búsqueda semántica)
+    rag_tool = QueryEngineTool(
+        query_engine=query_engine,
+        metadata=ToolMetadata(
+            name="ec2_documentation_rag",
+            description=(
+                "Use this tool to answer questions about AWS EC2 "
+                "using the provided technical documentation. "
+                "Use it for explanations, concepts, configuration, "
+                "troubleshooting and questions about how EC2 works."
+            )
+        )
+    )
+
+    # Tool 2: Generador de AWS CLI
+    def generate_aws_cli(command_request: str) -> str:
+        """
+        Generate only an AWS CLI command for the requested EC2 operation.
+        """
+        prompt = f"""
+Generate the AWS CLI command required to perform the following request.
+
+Rules:
+- Return ONLY the AWS CLI command.
+- Do not explain the command.
+- Do not use Markdown.
+- Do not include multiple commands.
+- Do not try to execute the command.
+- Prefer the AWS CLI v2 syntax.
+- If the request cannot be represented safely as a single AWS CLI command,
+  return: UNSUPPORTED
+
+Request:
+{command_request}
+"""
+        response = llm.complete(prompt)
+        return str(response).strip()
+
+    cli_tool = FunctionTool.from_defaults(
+        fn=generate_aws_cli,
+        name="aws_cli_command",
+        description=(
+            "Use this tool ONLY when the user asks for an AWS CLI command "
+            "to perform an EC2 operation. This tool generates commands but "
+            "does not execute them."
+        )
+    )
+
+    agent_system_prompt = (
+        "You are a specialized AWS EC2 AI Assistant.\n"
+        "Your ONLY focus is AWS EC2 documentation and AWS CLI commands for EC2.\n\n"
+        "STRICT ROUTING RULES:\n"
+        "1. If the user asks theoretical questions, concepts, or technical troubleshooting about AWS EC2, "
+        "you MUST call the `ec2_documentation_rag` tool.\n"
+        "2. If the user requests an AWS CLI command for EC2, you MUST call the `aws_cli_command` tool.\n"
+        "3. For ANY question unrelated to AWS EC2 (e.g., Slack installation, general OS questions, non-AWS topics), "
+        "DO NOT CALL ANY TOOLS. Immediately reply with: 'I am a specialized AWS EC2 Assistant. "
+        "I can only help with AWS EC2 technical documentation and AWS CLI commands for EC2.'"
+    )
+
+    agent = ReActAgent(
+        name="aws_ec2_agent",
+        tools=[rag_tool, cli_tool],
+        llm=llm,
+        system_prompt=agent_system_prompt
+    )
+
+    return agent

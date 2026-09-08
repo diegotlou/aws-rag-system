@@ -35,7 +35,7 @@ Este proyecto demuestra la creación de un sistema de recuperación aumentada po
     * El archivo `requirements.txt` solo tiene las bibliotecas necesarias para la ejecución de **Chat.py**
 2. Configurar las claves en `st.secrets` y variables `.env`.
 3. Ejecutar `data_ingestion.py` para cargar la documentación.
-4. Iniciar la aplicación con `streamlit run Chay.py` ó `python -m streamlit run Chay.py`.
+4. Iniciar la aplicación con `streamlit run Chat.py` ó `python -m streamlit run Chat.py`.
 5. Consultar la documentación de EC2 desde la interfaz.
 
 ## Resultados esperados
